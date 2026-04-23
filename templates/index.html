@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloud Security Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <h1>☁️ Cloud Security Dashboard</h1>
+    <button onclick="runScan()">🔄 Run Scan</button>
+</div>
+
+<!-- REPORT SELECTOR -->
+<div class="top-bar">
+    <div>
+        <h3>📁 Reports (Current & History)</h3>
+        <form method="get">
+            <select name="report" onchange="this.form.submit()">
+                {% for file, label in reports %}
+                    <option value="{{file}}" {% if file == selected %}selected{% endif %}>
+                        {{label}}
+                    </option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <a href="/download/{{selected}}">
+        <button>⬇️ Download Report</button>
+    </a>
+</div>
+
+<!-- SUMMARY CARDS -->
+<div class="cards">
+    <div class="card critical">Critical: {{critical}}</div>
+    <div class="card high">High: {{high}}</div>
+    <div class="card medium">Medium: {{medium}}</div>
+</div>
+
+<!-- CHART -->
+<div class="chart-container">
+    <canvas id="chart"></canvas>
+</div>
+
+<!-- FILTER BUTTONS -->
+<div class="filters">
+    <button onclick="filterTable('ALL')">All</button>
+    <button onclick="filterTable('CRITICAL')">Critical</button>
+    <button onclick="filterTable('HIGH')">High</button>
+    <button onclick="filterTable('MEDIUM')">Medium</button>
+</div>
+
+<!-- TABLE -->
+<table id="table">
+<tr>
+    <th>Resource</th>
+    <th>Type</th>
+    <th>Issue</th>
+    <th>Severity</th>
+</tr>
+
+{% for item in data %}
+<tr data-severity="{{item.severity}}">
+    <td>{{item.resource}}</td>
+    <td>{{item.type}}</td>
+    <td>{{item.issue}}</td>
+    <td>
+        <span class="badge {{item.severity | lower}}">
+            {{item.severity}}
+        </span>
+    </td>
+</tr>
+{% endfor %}
+
+</table>
+
+<script src="/static/script.js"></script>
+
+<script>
+new Chart(document.getElementById('chart'), {
+    type: 'pie',
+    data: {
+        labels: ['Critical', 'High', 'Medium'],
+        datasets: [{
+            data: [{{critical}}, {{high}}, {{medium}}]
+        }]
+    }
+});
+</script>
+
+</body>
+</html>
