@@ -30,7 +30,10 @@ def get_latest_report():
     latest = sorted(files)[-1]
 
     timestamp = latest.replace("report_", "").replace(".json", "")
+    from datetime import timezone
+
     dt = datetime.strptime(timestamp, "%Y-%m-%d_%H-%M")
+    dt = dt.replace(tzinfo=timezone.utc)
 
     return latest, dt
 @app.route("/")

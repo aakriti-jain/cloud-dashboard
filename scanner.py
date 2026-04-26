@@ -1,7 +1,7 @@
 import boto3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 def run_scan():
     findings = []
@@ -42,7 +42,7 @@ def run_scan():
     if not os.path.exists("reports"):
         os.makedirs("reports")
 
-    filename = f"reports/report_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.json"
+    filename = f"reports/report_{datetime.now(timezone.utc).strftime('%Y-%m-%d_%H-%M')}.json"
 
     with open(filename, "w") as f:
         json.dump(findings, f, indent=4)
