@@ -134,7 +134,10 @@ def last_scan():
 
     return jsonify({"last_scan": dt.isoformat()})
 
-
+@app.after_request
+def add_header(response):
+    response.headers["Cache-Control"] = "no-store"
+    return response
 # -------------------------
 # MAIN
 # -------------------------
