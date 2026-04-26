@@ -60,8 +60,11 @@ def dashboard():
     )
 @app.route("/run_scan", methods=["POST"])
 def run_scan_api():
-    report_file = run_scan()
-    return {"status": "success", "report": report_file}
+    findings = run_scan()
+    return {
+        "status": "success",
+        "data": findings
+    }
 
 @app.route("/download/<filename>")
 def download(filename):
