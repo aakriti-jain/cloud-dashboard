@@ -44,13 +44,15 @@ def get_latest_report_time():
     if not reports:
         return None
 
-    latest = reports[0]  # correct: latest first
-
+    latest = reports[0]
     timestamp = latest.replace("report_", "").replace(".json", "")
-    dt = datetime.strptime(timestamp, "%Y-%m-%d_%H-%M")
 
-    # treat stored time as UTC
-    return dt.replace(tzinfo=timezone.utc)
+    try:
+        # NEW FORMAT WITH SECONDS
+        return datetime.strptime(timestamp, "%Y-%m-%d_%H-%M-%S")
+    except:
+        return None
+
 
 
 # -------------------------
@@ -130,9 +132,9 @@ def last_scan():
     dt = get_latest_report_time()
 
     if not dt:
-        return jsonify({"last_scan": None})
+        return {"last_scan": None}
 
-    return jsonify({"last_scan": dt.isoformat()})
+    return {"last_scan": dt.isoformat()}
 
 @app.after_request
 def add_header(response):
