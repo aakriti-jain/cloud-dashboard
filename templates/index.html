@@ -8,44 +8,33 @@
 
 <body>
 
-<tbody id="tableBody"></tbody>
-<div id="criticalCount"></div>
-<div id="highCount"></div>
-<div id="mediumCount"></div>
-
-<div id="lastScan">Last scan: --</div>
-
 <!-- HEADER -->
 <div class="header">
     <h1>☁️ Cloud Security Dashboard</h1>
     <button onclick="runScan()">Run Scan</button>
 </div>
 
+<!-- STATUS + LOADER -->
+<div id="lastScan">Last scan: --</div>
+<div id="loader" style="display:none;">Running scan...</div>
+
 <!-- REPORT SELECTOR -->
 <div class="top-bar">
     <div>
         <h3>📁 Reports (Current & History)</h3>
-        <form method="get">
-            <select name="report" onchange="this.form.submit()">
-                {% for file, label in reports %}
-                    <option value="{{file}}" {% if file == selected %}selected{% endif %}>
-                        {{label}}
-                    </option>
-                {% endfor %}
-            </select>
-        </form>
+
+        <!-- THIS DROPDOWN WILL BE UPDATED DYNAMICALLY -->
+        <select id="reportDropdown"></select>
     </div>
 
-    <a href="/download/{{selected}}">
-        <button>⬇️ Download Report</button>
-    </a>
+    <button onclick="downloadReport()">⬇️ Download Report</button>
 </div>
 
 <!-- SUMMARY CARDS -->
 <div class="cards">
-    <div class="card critical">Critical: {{critical}}</div>
-    <div class="card high">High: {{high}}</div>
-    <div class="card medium">Medium: {{medium}}</div>
+    <div class="card critical">Critical: <span id="criticalCount">0</span></div>
+    <div class="card high">High: <span id="highCount">0</span></div>
+    <div class="card medium">Medium: <span id="mediumCount">0</span></div>
 </div>
 
 <!-- CHART -->
@@ -63,32 +52,38 @@
 
 <!-- TABLE -->
 <table id="table">
-<tr>
-    <th>Resource</th>
-    <th>Type</th>
-    <th>Issue</th>
-    <th>Severity</th>
-</tr>
+    <thead>
+        <tr>
+            <th>Resource</th>
+            <th>Type</th>
+            <th>Issue</th>
+            <th>Severity</th>
+        </tr>
+    </thead>
 
-{% for item in data %}
-<tr data-severity="{{item.severity}}">
-    <td>{{item.resource}}</td>
-    <td>{{item.type}}</td>
-    <td>{{item.issue}}</td>
-    <td>
-        <span class="badge {{item.severity | lower}}">
-            {{item.severity}}
-        </span>
-    </td>
-</tr>
-{% endfor %}
-
+    <tbody id="tableBody">
+        {% for item in data %}
+        <tr data-severity="{{item.severity}}">
+            <td>{{item.resource}}</td>
+            <td>{{item.type}}</td>
+            <td>{{item.issue}}</td>
+            <td>
+                <span class="badge {{item.severity | lower}}">
+                    {{item.severity}}
+                </span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
 </table>
 
 <script src="/static/script.js"></script>
 
 <script>
-new Chart(document.getElementById('chart'), {
+/* ======================
+   INITIAL CHART SETUP
+====================== */
+let chart = new Chart(document.getElementById('chart'), {
     type: 'pie',
     data: {
         labels: ['Critical', 'High', 'Medium'],
@@ -97,6 +92,36 @@ new Chart(document.getElementById('chart'), {
         }]
     }
 });
+
+/* ======================
+   INITIAL DATA LOAD
+====================== */
+document.addEventListener("DOMContentLoaded", () => {
+    updateLastScan();
+
+    // populate dropdown from backend initially
+    const reports = {{ reports|tojson }};
+    const dropdown = document.getElementById("reportDropdown");
+
+    reports.forEach(r => {
+        const option = document.createElement("option");
+        option.value = r[0];
+        option.text = r[1];
+        dropdown.appendChild(option);
+    });
+
+    dropdown.value = "{{selected}}";
+});
+
+/* ======================
+   DOWNLOAD BUTTON
+====================== */
+function downloadReport() {
+    const file = document.getElementById("reportDropdown").value;
+    if (file) {
+        window.location.href = "/download/" + file;
+    }
+}
 </script>
 
 </body>
