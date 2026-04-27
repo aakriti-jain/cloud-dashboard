@@ -20,6 +20,8 @@ def run_scan():
 
         for bucket in buckets:
             name = bucket['Name']
+
+            # ---- ACL CHECK ----
             try:
                 acl = s3.get_bucket_acl(Bucket=name)
 
@@ -28,12 +30,28 @@ def run_scan():
                         findings.append({
                             "resource": name,
                             "type": "S3",
-                            "issue": "Public bucket",
+                            "issue": "Public bucket (ACL)",
                             "severity": "CRITICAL"
                         })
 
             except Exception as e:
-                print(f"S3 error for {name}: {e}")
+                print(f"S3 ACL error for {name}: {e}")
+
+            # ---- POLICY CHECK (IMPORTANT ADDITION) ----
+            try:
+                policy = s3.get_bucket_policy(Bucket=name)
+
+                if '"Principal": "*"' in policy['Policy']:
+                    findings.append({
+                        "resource": name,
+                        "type": "S3",
+                        "issue": "Public bucket (Policy)",
+                        "severity": "CRITICAL"
+                    })
+
+            except Exception:
+                # No policy is normal → ignore
+                pass
 
     except Exception as e:
         print("S3 scan failed:", e)
@@ -49,13 +67,35 @@ def run_scan():
         print(f"Found {len(policies)} IAM policies")
 
         for policy in policies:
-            if "FullAccess" in policy['PolicyName']:
+            name = policy['PolicyName']
+
+            # Basic detection
+            if "FullAccess" in name or "Admin" in name:
                 findings.append({
-                    "resource": policy['PolicyName'],
+                    "resource": name,
                     "type": "IAM",
-                    "issue": "Overly permissive policy",
+                    "issue": "Overly permissive policy name",
                     "severity": "HIGH"
                 })
+
+            # Optional deeper check (policy document)
+            try:
+                version = iam.get_policy(PolicyArn=policy['Arn'])['Policy']['DefaultVersionId']
+                doc = iam.get_policy_version(
+                    PolicyArn=policy['Arn'],
+                    VersionId=version
+                )['PolicyVersion']['Document']
+
+                if '"Action": "*"' in json.dumps(doc) and '"Effect": "Allow"' in json.dumps(doc):
+                    findings.append({
+                        "resource": name,
+                        "type": "IAM",
+                        "issue": "Wildcard permissions (*)",
+                        "severity": "CRITICAL"
+                    })
+
+            except Exception:
+                pass
 
     except Exception as e:
         print("IAM scan failed:", e)
@@ -69,10 +109,9 @@ def run_scan():
 
 
     # -------------------------
-    # UNIQUE TIMESTAMP (FIXED)
+    # UNIQUE TIMESTAMP
     # -------------------------
     timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d_%H-%M-%S')
-
     filename = f"reports/report_{timestamp}.json"
 
 
