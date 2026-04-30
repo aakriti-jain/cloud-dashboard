@@ -11,7 +11,10 @@
 <!-- HEADER -->
 <div class="header">
     <h1>☁️ Cloud Security Dashboard</h1>
-    <button onclick="runScan()">Run Scan</button>
+    <div class="header-actions">
+        <button onclick="runScan()">Run Scan</button>
+        <button id="themeToggle" class="theme-btn" onclick="toggleTheme()">🌙</button>
+    </div>
 </div>
 
 <!-- STATUS + LOADER -->
@@ -48,6 +51,10 @@
     <button onclick="filterTable('CRITICAL')">Critical</button>
     <button onclick="filterTable('HIGH')">High</button>
     <button onclick="filterTable('MEDIUM')">Medium</button>
+
+    <select id="typeFilter" onchange="filterByType(this.value)">
+        <option value="ALL">All Types</option>
+    </select>
 </div>
 
 <!-- TABLE -->
@@ -57,16 +64,21 @@
             <th>Resource</th>
             <th>Type</th>
             <th>Issue</th>
+            <th>Impact</th>
             <th>Severity</th>
         </tr>
     </thead>
 
     <tbody id="tableBody">
         {% for item in data %}
-        <tr data-severity="{{item.severity}}">
+        <tr data-severity="{{item.severity}}" data-type="{{item.type}}" data-issue="{{item.issue}}" data-impact="{{item.impact}}" data-resource="{{item.resource}}">
             <td>{{item.resource}}</td>
             <td>{{item.type}}</td>
-            <td>{{item.issue}}</td>
+            <td>
+                {{item.issue}}
+                <button class="explain-btn" onclick="onExplain(this)">Explain</button>
+            </td>
+            <td class="impact-cell">{{item.impact}}</td>
             <td>
                 <span class="badge {{item.severity | lower}}">
                     {{item.severity}}
@@ -76,6 +88,14 @@
         {% endfor %}
     </tbody>
 </table>
+
+<!-- EXPLAIN MODAL -->
+<div id="explainModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeExplain()">✖</button>
+        <div id="explainBody">Loading...</div>
+    </div>
+</div>
 
 <script src="/static/script.js"></script>
 
@@ -97,10 +117,12 @@ let chart = new Chart(document.getElementById('chart'), {
    INITIAL DATA LOAD
 ====================== */
 document.addEventListener("DOMContentLoaded", () => {
+    initTheme();
     updateLastScan();
 
     // populate dropdown from backend initially
     const reports = {{ reports|tojson }};
+    const initialData = {{ data|tojson }};
     const dropdown = document.getElementById("reportDropdown");
 
     reports.forEach(r => {
@@ -111,6 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     dropdown.value = "{{selected}}";
+    populateTypeFilter(initialData);
 });
 
 /* ======================

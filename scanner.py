@@ -1,125 +1,98 @@
-import boto3
 import json
 import os
 from datetime import datetime, timezone
 
+print("🔎 scanner.py loading — integrating sub-scanners...")
+
+
+def _normalize(item):
+    """Normalize scanner outputs to lowercase keys.
+
+    Accepts dictionaries with either TitleCase keys (from older scanners)
+    or lowercase keys and returns standardized keys:
+    resource, type, issue, severity, impact
+    """
+    if not isinstance(item, dict):
+        return None
+
+    resource = item.get('resource') or item.get('Resource') or item.get('ResourceName')
+    type_ = item.get('type') or item.get('Type')
+    issue = item.get('issue') or item.get('Issue')
+    severity = item.get('severity') or item.get('Severity')
+    impact = item.get('impact') or item.get('Impact')
+
+    return {
+        'resource': resource,
+        'type': type_,
+        'issue': issue,
+        'severity': severity,
+        'impact': impact
+    }
+
 
 def run_scan():
-    print("🚀 Running AWS Scan...")
-
+    """Run all available scanners (S3, IAM, Network) and save a unified report."""
     findings = []
 
-    # -------------------------
-    # S3 CHECK
-    # -------------------------
+    # Dynamically import the modules where possible so missing pieces
+    # won't crash the whole run.
     try:
-        s3 = boto3.client('s3')
-        buckets = s3.list_buckets()['Buckets']
-
-        print(f"Found {len(buckets)} buckets")
-
-        for bucket in buckets:
-            name = bucket['Name']
-
-            # ---- ACL CHECK ----
-            try:
-                acl = s3.get_bucket_acl(Bucket=name)
-
-                for grant in acl['Grants']:
-                    if 'AllUsers' in str(grant):
-                        findings.append({
-                            "resource": name,
-                            "type": "S3",
-                            "issue": "Public bucket (ACL)",
-                            "severity": "CRITICAL"
-                        })
-
-            except Exception as e:
-                print(f"S3 ACL error for {name}: {e}")
-
-            # ---- POLICY CHECK (IMPORTANT ADDITION) ----
-            try:
-                policy = s3.get_bucket_policy(Bucket=name)
-
-                if '"Principal": "*"' in policy['Policy']:
-                    findings.append({
-                        "resource": name,
-                        "type": "S3",
-                        "issue": "Public bucket (Policy)",
-                        "severity": "CRITICAL"
-                    })
-
-            except Exception:
-                # No policy is normal → ignore
-                pass
-
+        from Buckets_Policies import s3_scanner, iam_scanner
     except Exception as e:
-        print("S3 scan failed:", e)
+        print("Could not import Buckets_Policies scanners:", e)
+        s3_scanner = None
+        iam_scanner = None
 
-
-    # -------------------------
-    # IAM CHECK
-    # -------------------------
     try:
-        iam = boto3.client('iam')
-        policies = iam.list_policies(Scope='Local')['Policies']
-
-        print(f"Found {len(policies)} IAM policies")
-
-        for policy in policies:
-            name = policy['PolicyName']
-
-            # Basic detection
-            if "FullAccess" in name or "Admin" in name:
-                findings.append({
-                    "resource": name,
-                    "type": "IAM",
-                    "issue": "Overly permissive policy name",
-                    "severity": "HIGH"
-                })
-
-            # Optional deeper check (policy document)
-            try:
-                version = iam.get_policy(PolicyArn=policy['Arn'])['Policy']['DefaultVersionId']
-                doc = iam.get_policy_version(
-                    PolicyArn=policy['Arn'],
-                    VersionId=version
-                )['PolicyVersion']['Document']
-
-                if '"Action": "*"' in json.dumps(doc) and '"Effect": "Allow"' in json.dumps(doc):
-                    findings.append({
-                        "resource": name,
-                        "type": "IAM",
-                        "issue": "Wildcard permissions (*)",
-                        "severity": "CRITICAL"
-                    })
-
-            except Exception:
-                pass
-
+        import network_scanner
     except Exception as e:
-        print("IAM scan failed:", e)
+        print("Could not import network_scanner:", e)
+        network_scanner = None
 
+    # S3
+    if s3_scanner:
+        try:
+            s3_results = s3_scanner.scan_s3_buckets()
+            for it in s3_results:
+                n = _normalize(it)
+                if n:
+                    findings.append(n)
+        except Exception as e:
+            print("S3 scanner error:", e)
 
-    # -------------------------
-    # ENSURE REPORTS FOLDER
-    # -------------------------
-    if not os.path.exists("reports"):
-        os.makedirs("reports")
+    # IAM
+    if iam_scanner:
+        try:
+            iam_results = iam_scanner.scan_iam()
+            for it in iam_results:
+                n = _normalize(it)
+                if n:
+                    findings.append(n)
+        except Exception as e:
+            print("IAM scanner error:", e)
 
+    # Network (security groups)
+    if network_scanner:
+        try:
+            net_results = network_scanner.scan_network()
+            for it in net_results:
+                n = _normalize(it)
+                if n:
+                    findings.append(n)
+        except Exception as e:
+            print("Network scanner error:", e)
 
-    # -------------------------
-    # UNIQUE TIMESTAMP
-    # -------------------------
+    # Fallback: if no findings and no scanners available, keep empty list
+
+    # Ensure reports folder exists
+    if not os.path.exists('reports'):
+        os.makedirs('reports')
+
     timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d_%H-%M-%S')
-    filename = f"reports/report_{timestamp}.json"
+    filename = f'reports/report_{timestamp}.json'
 
-
-    # -------------------------
-    # SAVE REPORT
-    # -------------------------
-    with open(filename, "w") as f:
-        json.dump(findings, f, indent=4)
+    with open(filename, 'w') as fh:
+        json.dump(findings, fh, indent=4)
 
     print(f"✅ Report saved: {filename}")
     print(f"🔍 Findings count: {len(findings)}")

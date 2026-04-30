@@ -3,6 +3,11 @@ import json
 import os
 from datetime import datetime, timezone
 from scanner import run_scan as aws_run_scan  # avoid name conflict
+import requests
+
+# AI / Gemini config via environment
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
 
 app = Flask(__name__)
 
@@ -140,6 +145,81 @@ def last_scan():
 def add_header(response):
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+# -------------------------
+# AI: Explain Finding
+# -------------------------
+@app.route('/explain_finding', methods=['POST'])
+def explain_finding():
+    data = request.get_json() or {}
+
+    # minimal fields
+    resource = data.get('resource')
+    ftype = data.get('type')
+    issue = data.get('issue')
+    severity = data.get('severity')
+    impact = data.get('impact')
+
+    if not GEMINI_API_KEY:
+        return jsonify({
+            'error': 'GEMINI_API_KEY not configured. Set environment variable GEMINI_API_KEY to enable AI explanations.'
+        }), 400
+
+    # Build prompt — explicitly ask for clean JSON without code blocks
+    prompt = (
+        f"You are a cloud security assistant. Explain the following finding concisely and provide 3 practical remediation steps. "
+        f"Return ONLY valid JSON (no code blocks, no markdown, no backticks) with these exact keys: explanation (string), remediation (array of 3 strings).\n\n"
+        f"Resource: {resource}\n"
+        f"Type: {ftype}\n"
+        f"Issue: {issue}\n"
+        f"Severity: {severity}\n"
+        f"Impact: {impact}"
+    )
+
+    # Use v1 endpoint for Gemini models (gemini-2.5-flash, etc.)
+    url = f"https://generativelanguage.googleapis.com/v1/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+
+    body = {
+        'contents': [
+            {
+                'role': 'user',
+                'parts': [{ 'text': prompt }]
+            }
+        ],
+        'generationConfig': {
+            'temperature': 0.1,
+            'maxOutputTokens': 512
+        }
+    }
+
+    try:
+        resp = requests.post(url, json=body, timeout=15)
+        resp.raise_for_status()
+        j = resp.json()
+
+        # Gemini API returns candidates with text content
+        output = ''
+        if 'candidates' in j and len(j['candidates']) > 0:
+            candidate = j['candidates'][0]
+            if 'content' in candidate and 'parts' in candidate['content']:
+                parts = candidate['content']['parts']
+                if parts and 'text' in parts[0]:
+                    output = parts[0]['text'].strip()
+        else:
+            output = json.dumps(j)
+
+        # Strip code block markers if Gemini wrapped it
+        if output.startswith('```json'):
+            output = output.replace('```json', '').replace('```', '').strip()
+        elif output.startswith('```'):
+            output = output.replace('```', '').strip()
+
+        # return the cleaned output
+        return jsonify({ 'explanation': output })
+
+    except Exception as e:
+        return jsonify({ 'error': str(e) }), 500
 # -------------------------
 # MAIN
 # -------------------------
