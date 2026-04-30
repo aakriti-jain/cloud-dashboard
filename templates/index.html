@@ -103,16 +103,28 @@
 /* ======================
    INITIAL CHART SETUP
 ====================== */
-let chart = new Chart(document.getElementById('chart'), {
+const chart = new Chart(document.getElementById('chart'), {
     type: 'pie',
     data: {
         labels: ['Critical', 'High', 'Medium'],
         datasets: [{
-            data: [{{critical}}, {{high}}, {{medium}}]
+            data: [{{critical}}, {{high}}, {{medium}}],
+            backgroundColor: [
+                '#ff4d4f', // CRITICAL (red)
+                '#fa8c16', // HIGH (orange)
+                '#fadb14'  // MEDIUM (yellow)
+            ],
+            borderWidth: 1
         }]
+    },
+    options: {
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
     }
 });
-
 /* ======================
    INITIAL DATA LOAD
 ====================== */
