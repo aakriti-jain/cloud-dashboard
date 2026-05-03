@@ -111,10 +111,13 @@ function updateTable(data) {
 
     data.forEach(item => {
         const row = `
-            <tr data-severity="${item.severity}" data-type="${item.type}">
+            <tr data-severity="${item.severity}" data-type="${item.type}" data-resource="${item.resource}" data-issue="${item.issue}" data-impact="${item.impact || ''}">
                 <td>${item.resource}</td>
                 <td>${item.type}</td>
-                <td>${item.issue}</td>
+                <td>
+                    ${item.issue}
+                    <button class="explain-btn" onclick="onExplain(this)">Explain</button>
+                </td>
                 <td class="impact-cell">${item.impact || "N/A"}</td>
                 <td>
                     <span class="badge ${item.severity.toLowerCase()}">
@@ -152,7 +155,7 @@ function onExplain(btn) {
     .then(r => r.json())
     .then(data => {
         if (data.error) showExplain('Error: ' + data.error);
-        else showExplain(data.explanation || JSON.stringify(data));
+        else showExplain(data);
     })
     .catch(err => showExplain('Request failed: ' + err));
 }
@@ -162,33 +165,44 @@ function showExplain(content) {
     const body = document.getElementById('explainBody');
 
     try {
-        let cleaned = content.trim();
+        let parsed = null;
 
-        // Strategy 1: Remove code block markers (```json {...} ```)
-        if (cleaned.startsWith('```json')) {
-            cleaned = cleaned.replace(/^```json\s*\n?/, '').replace(/\n?```\s*$/, '');
-        } else if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```\s*\n?/, '').replace(/\n?```\s*$/, '');
+        if (content && typeof content === 'object') {
+            parsed = content;
+        } else if (typeof content === 'string') {
+            let cleaned = content.trim();
+
+            if (cleaned.startsWith('```json')) {
+                cleaned = cleaned.replace(/^```json\s*\n?/, '').replace(/\n?```\s*$/, '');
+            } else if (cleaned.startsWith('```')) {
+                cleaned = cleaned.replace(/^```\s*\n?/, '').replace(/\n?```\s*$/, '');
+            }
+
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (jsonMatch) cleaned = jsonMatch[0];
+
+            try {
+                parsed = JSON.parse(cleaned);
+            } catch (e) {
+                // not JSON — leave parsed null and fall back to text
+            }
         }
 
-        // Strategy 2: Extract JSON object if there's text before/after
-        let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            cleaned = jsonMatch[0];
-        }
-
-        // Try to parse as JSON
-        const parsed = JSON.parse(cleaned);
-
-        // Ensure we have the expected fields
         if (parsed && typeof parsed === 'object' && parsed.explanation) {
+            const escapeHtml = (value) => String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
             let remediationHtml = '';
 
             if (Array.isArray(parsed.remediation) && parsed.remediation.length > 0) {
                 remediationHtml = `
                     <h3>Remediation Steps</h3>
                     <ol>
-                        ${parsed.remediation.map(step => `<li>${step}</li>`).join('')}
+                        ${parsed.remediation.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
                     </ol>
                 `;
             }
@@ -196,7 +210,7 @@ function showExplain(content) {
             const formattedHtml = `
                 <div class="explain-content">
                     <h3>Explanation</h3>
-                    <p>${parsed.explanation}</p>
+                    <p>${escapeHtml(parsed.explanation)}</p>
                     ${remediationHtml}
                 </div>
             `;
@@ -205,11 +219,11 @@ function showExplain(content) {
             return;
         }
     } catch (e) {
-        // JSON parsing failed, will display as text below
+        console.error('showExplain error', e);
     }
 
     // Fallback: display as plain text if JSON parsing fails
-    body.innerText = content;
+    body.innerText = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
     modal.style.display = 'flex';
 }
 

@@ -215,7 +215,17 @@ def explain_finding():
         elif output.startswith('```'):
             output = output.replace('```', '').strip()
 
-        # return the cleaned output
+        # Try to parse the model output as JSON. If it is valid JSON and
+        # contains the expected keys, return it as structured JSON so the
+        # frontend can render it nicely. Otherwise, return the raw text
+        # under the `explanation` key.
+        try:
+            parsed = json.loads(output)
+            if isinstance(parsed, dict) and 'explanation' in parsed:
+                return jsonify(parsed)
+        except Exception:
+            parsed = None
+
         return jsonify({ 'explanation': output })
 
     except Exception as e:
